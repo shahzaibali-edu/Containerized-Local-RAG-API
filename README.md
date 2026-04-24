@@ -24,3 +24,28 @@ Ensure Docker Desktop is running. Clone the repository and navigate into the pro
 ```bash
 git clone [https://github.com/YourUsername/Containerized-Local-RAG-API.git](https://github.com/YourUsername/Containerized-Local-RAG-API.git)
 cd Containerized-Local-RAG-API
+```
+
+Place your target PDF document in the `/data` directory.
+
+Build and start the container:
+```bash
+docker-compose up --build
+```
+*Note: The first boot will take some time to download the model weights to the local volume. Subsequent boots will be instant.*
+
+### 2. Frontend (Gradio)
+Open a separate standard terminal (not Docker), install the UI requirements, and launch the client:
+
+```bash
+pip install gradio requests
+python ui.py
+```
+This will generate a local web address (usually `http://127.0.0.1:7860`) where you can interact with the RAG pipeline.
+
+## API Endpoints
+- `POST /api/v1/chat`: Main inference endpoint. Expects JSON: `{"query": "your question"}`.
+- `GET /docs`: Auto-generated Swagger documentation for API testing.
+
+## Performance Notes
+This pipeline is currently configured for local CPU-only inference. Response times range from 20-50 seconds depending on local hardware. To upgrade for production or GPU-enabled environments, swap the `model_id` in `engine.py` to a larger parameter model.
