@@ -1,0 +1,13 @@
+# Environment variables
+.env
+
+# Massive AI models
+hf_cache/
+
+# Local DuckDB database files
+*.db
+*.db.wal
+
+# Python cache
+__pycache__/
+*.pyc

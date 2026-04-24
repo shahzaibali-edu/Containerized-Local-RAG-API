@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+langchain
+langchain-huggingface
+langchain-community
+duckdb
+duckdb-engine
+sentence-transformers
+pypdf
