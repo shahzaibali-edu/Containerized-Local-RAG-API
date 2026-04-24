@@ -16,6 +16,14 @@ A completely localized, offline Retrieval-Augmented Generation (RAG) pipeline. T
 - **CPU Optimized:** Configured with `low_cpu_mem_usage` and `.safetensors` to run reliably on consumer laptops without GPU acceleration.
 - **Modular UI:** The Gradio frontend is completely decoupled from the API backend.
 
+## Challenges & Engineering Workarounds
+
+Building a local RAG pipeline without cloud GPUs presented several hardware and containerization limits that required specific workarounds:
+
+* **Docker/WSL Storage Crashes:** Downloading massive PyTorch and Hugging Face weights inside an ephemeral Docker container repeatedly corrupted the WSL `.vhdx` virtual drive. **Fix:** Migrated the Docker engine to a secondary drive and implemented local volume mapping (`./hf_cache:/root/.cache/huggingface`). This safely stores the model on the host OS and eliminates 300MB+ downloads on every container restart.
+* **CPU Bottlenecks & FastAPI Freezes:** Running a local LLM blocks the main execution thread, which originally caused the asynchronous FastAPI server to freeze. **Fix:** Changed the inference endpoint from `async def` to a synchronous `def` to utilize FastAPI's background thread pooling, and pre-warmed the AI model in memory during the app's startup sequence to cut the "cold start" delay from 30s to ~2s for warm queries.
+* **Small Model Hallucinations:** The 135M parameter model lacks the reasoning capacity of larger models and frequently hallucinated facts outside the PDF context. **Fix:** Bound the model to strict ChatML formatting (`<|im_start|>`) in the prompt template, creating an explicit "escape hatch" that forces the model to surrender with *"I do not have info on that"* instead of guessing.
+
 ## Setup & Installation
 
 ### 1. Backend (Docker)
