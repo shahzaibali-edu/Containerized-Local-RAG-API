@@ -1,19 +1,24 @@
 # Containerized Local RAG API
 
-A completely localized, offline Retrieval-Augmented Generation (RAG) pipeline. This microservice architecture separates a FastAPI backend from a Gradio frontend, completely containerized via Docker for consistent local deployment without relying on external APIs.
+A completely localized, offline Retrieval-Augmented Generation (RAG) pipeline. This microservice architecture separates a FastAPI backend from a Gradio frontend, completely containerized via Docker for consistent local deployment — no external APIs or cloud services required.
 
 ## Architecture & Tech Stack
 - **Framework:** FastAPI, Python 3.10
 - **AI Pipeline:** LangChain, Hugging Face
 - **Local LLM:** `HuggingFaceTB/SmolLM2-135M-Instruct` (Local CPU execution)
-- **Vector Database:** DuckDB 
+- **Vector Database:** DuckDB (in-memory)
 - **Containerization:** Docker & Docker Compose
-- **Frontend:** Gradio
+- **Frontend:** Gradio (tabbed UI)
 
 ## Key Features
 - **100% Local Inference:** No OpenAI API keys or internet connection required after the initial model download.
-- **Docker Volume Caching:** Model weights are cached to a local volume (`hf_cache`) to prevent redownloading on container restarts and to bypass WSL storage limits.
-- **CPU Optimized:** Configured with `low_cpu_mem_usage` and `.safetensors` to run reliably on consumer laptops without GPU acceleration.
+- **Runtime PDF Uploads:** Upload any PDF at runtime through the UI or API — no container restart needed. Multiple PDFs are supported simultaneously.
+- **Auto-Ingestion:** PDFs placed in the `data/` folder before startup are automatically embedded when the container boots.
+- **Non-Blocking Ingestion:** PDF embedding runs in a background thread so the chat endpoint stays responsive during upload processing.
+- **Upload Safety:** Duplicate detection, 50 MB file size limit, and PDF-only validation on the upload endpoint.
+- **Live Status Tracking:** Poll `GET /api/v1/documents` to monitor ingestion progress (`processing` → `ready`).
+- **Docker Volume Caching:** Model weights are cached to a local volume (`hf_cache/`) to prevent re-downloading on container restarts.
+- **CPU Optimized:** Configured with `low_cpu_mem_usage` and `.safetensors` to run reliably on consumer laptops without a GPU.
 - **Modular UI:** The Gradio frontend is completely decoupled from the API backend.
 
 ## Challenges & Engineering Workarounds
@@ -23,37 +28,57 @@ Building a local RAG pipeline without cloud GPUs presented several hardware and 
 * **Docker/WSL Storage Crashes:** Downloading massive PyTorch and Hugging Face weights inside an ephemeral Docker container repeatedly corrupted the WSL `.vhdx` virtual drive. **Fix:** Migrated the Docker engine to a secondary drive and implemented local volume mapping (`./hf_cache:/root/.cache/huggingface`). This safely stores the model on the host OS and eliminates 300MB+ downloads on every container restart.
 * **CPU Bottlenecks & FastAPI Freezes:** Running a local LLM blocks the main execution thread, which originally caused the asynchronous FastAPI server to freeze. **Fix:** Changed the inference endpoint from `async def` to a synchronous `def` to utilize FastAPI's background thread pooling, and pre-warmed the AI model in memory during the app's startup sequence to cut the "cold start" delay from 30s to ~2s for warm queries.
 * **Small Model Hallucinations:** The 135M parameter model lacks the reasoning capacity of larger models and frequently hallucinated facts outside the PDF context. **Fix:** Bound the model to strict ChatML formatting (`<|im_start|>`) in the prompt template, creating an explicit "escape hatch" that forces the model to surrender with *"I do not have info on that"* instead of guessing.
+* **Blocking PDF Ingestion:** Embedding a new PDF is CPU-intensive and would have stalled all chat requests. **Fix:** Ingestion runs in a `threading.Thread` with a lock on the vector store writer, keeping the `/chat` endpoint available throughout.
 
 ## Setup & Installation
 
-### 1. Backend (Docker)
-Ensure Docker Desktop is running. Clone the repository and navigate into the project directory:
+### Prerequisites
+- Docker Desktop running
+- Python 3.10+ (for the Gradio UI)
+- A Hugging Face account and access token
 
+### 1. Clone & Configure
 ```bash
-git clone [https://github.com/YourUsername/Containerized-Local-RAG-API.git](https://github.com/YourUsername/Containerized-Local-RAG-API.git)
+git clone https://github.com/shahzaibali-edu/Containerized-Local-RAG-API.git
 cd Containerized-Local-RAG-API
 ```
 
-Place your target PDF document in the `/data` directory.
+Copy the environment template and add your token:
+```bash
+cp .env.example .env
+# Edit .env and set your HF_TOKEN
+```
 
-Build and start the container:
+### 2. (Optional) Pre-load PDFs
+Drop any PDF files into the `data/` folder. They will be automatically ingested when the container starts.
+
+### 3. Start the Backend
 ```bash
 docker-compose up --build
 ```
-*Note: The first boot will take some time to download the model weights to the local volume. Subsequent boots will be instant.*
+> **First boot:** Docker downloads model weights to `hf_cache/` — this takes a few minutes. Subsequent boots are instant.
 
-### 2. Frontend (Gradio)
-Open a separate standard terminal (not Docker), install the UI requirements, and launch the client:
+Watch for this in the logs before proceeding:
+```
+✓ 'YourFile.pdf' ingested — XX chunks
+```
 
+### 4. Launch the Frontend
+In a separate terminal:
 ```bash
 pip install gradio requests
 python ui.py
 ```
-This will generate a local web address (usually `http://127.0.0.1:7860`) where you can interact with the RAG pipeline.
+Open **http://127.0.0.1:7860** to access the chat interface.
 
 ## API Endpoints
-- `POST /api/v1/chat`: Main inference endpoint. Expects JSON: `{"query": "your question"}`.
-- `GET /docs`: Auto-generated Swagger documentation for API testing.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/chat` | Ask a question. Body: `{"query": "your question"}` |
+| `POST` | `/api/v1/upload` | Upload a PDF for ingestion. Multipart form: `file=<pdf>` |
+| `GET`  | `/api/v1/documents` | List all ingested documents and their status |
+| `GET`  | `/docs` | Auto-generated Swagger UI for API testing |
 
 ## Performance Notes
-This pipeline is currently configured for local CPU-only inference. Response times range from 20-50 seconds depending on local hardware. To upgrade for production or GPU-enabled environments, swap the `model_id` in `engine.py` to a larger parameter model.
+This pipeline is configured for local CPU-only inference. Response times range from 20–50 seconds depending on hardware. To upgrade, swap the `model_id` in `app/engine.py` for a larger model (e.g., `Qwen/Qwen2.5-1.5B-Instruct`).

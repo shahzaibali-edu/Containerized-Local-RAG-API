@@ -11,3 +11,15 @@ hf_cache/
 # Python cache
 __pycache__/
 *.pyc
+*.pyo
+
+# Uploaded PDFs — tracked by Docker volume, not git
+data/*.pdf
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

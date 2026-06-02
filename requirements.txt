@@ -8,3 +8,4 @@ duckdb
 duckdb-engine
 sentence-transformers
 pypdf
+python-multipart
